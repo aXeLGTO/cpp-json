@@ -1,12 +1,16 @@
 #include <cassert>
 #include <chrono>
+#include <exception>
 #include <sstream>
 #include <string_view>
+#include <iostream>
 
 #include "json.h"
+#include "json_builder.h"
 
-using namespace json;
+using namespace std;
 using namespace std::literals;
+using namespace json;
 
 namespace {
 
@@ -66,7 +70,7 @@ void TestNull() {
     assert(!null_node.IsPureDouble());
     assert(!null_node.IsString());
     assert(!null_node.IsArray());
-    assert(!null_node.IsMap());
+    assert(!null_node.IsDict());
 
     Node null_node1{nullptr};
     assert(null_node1.IsNull());
@@ -80,6 +84,8 @@ void TestNull() {
     assert(node == null_node);
     // Пробелы, табуляции и символы перевода строки между токенами JSON файла игнорируются
     assert(LoadJSON(" \t\r\n\n\r null \t\r\n\n\r "s).GetRoot() == null_node);
+
+    assert(Builder{}.Value(nullptr).Build().IsNull());
 }
 
 void TestNumbers() {
@@ -117,6 +123,9 @@ void TestNumbers() {
     assert(LoadJSON("0.0").GetRoot() == Node{0.0});
     // Пробелы, табуляции и символы перевода строки между токенами JSON файла игнорируются
     assert(LoadJSON(" \t\r\n\n\r 0.0 \t\r\n\n\r ").GetRoot() == Node{0.0});
+
+    assert(Builder{}.Value(-100).Build().AsInt() == -100);
+    assert(Builder{}.Value(-0.5).Build().AsDouble() == -0.5);
 }
 
 void TestStrings() {
@@ -137,6 +146,8 @@ void TestStrings() {
     assert(Print(LoadJSON(escape_chars).GetRoot()) == "\"\\r\\n\t\\\"\\\\\""s);
     // Пробелы, табуляции и символы перевода строки между токенами JSON файла игнорируются
     assert(LoadJSON("\t\r\n\n\r \"Hello\" \t\r\n\n\r ").GetRoot() == Node{"Hello"s});
+
+    assert(Builder{}.Value("test"s).Build().AsString() == "test"s);
 }
 
 void TestBool() {
@@ -155,6 +166,8 @@ void TestBool() {
     assert(LoadJSON("false"s).GetRoot() == false_node);
     assert(LoadJSON(" \t\r\n\n\r true \r\n"s).GetRoot() == true_node);
     assert(LoadJSON(" \t\r\n\n\r false \t\r\n\n\r "s).GetRoot() == false_node);
+
+    assert(Builder{}.Value(true).Build().AsBool() == true);
 }
 
 void TestArray() {
@@ -170,12 +183,14 @@ void TestArray() {
     // Пробелы, табуляции и символы перевода строки между токенами JSON файла игнорируются
     assert(LoadJSON("[ 1 \r \n ,  \r\n\t 1.23, \n \n  \t\t  \"Hello\" \t \n  ] \n  "s).GetRoot()
            == arr_node);
+
+    assert(Builder{}.Value(arr).Build().AsArray() == arr);
 }
 
 void TestMap() {
     Node dict_node{Dict{{"key1"s, "value1"s}, {"key2"s, 42}}};
-    assert(dict_node.IsMap());
-    const Dict& dict = dict_node.AsMap();
+    assert(dict_node.IsDict());
+    const Dict& dict = dict_node.AsDict();
     assert(dict.size() == 2);
     assert(dict.at("key1"s).AsString() == "value1"s);
     assert(dict.at("key2"s).AsInt() == 42);
@@ -188,6 +203,8 @@ void TestMap() {
             "\t\r\n\n\r { \t\r\n\n\r \"key1\" \t\r\n\n\r: \t\r\n\n\r \"value1\" \t\r\n\n\r , \t\r\n\n\r \"key2\" \t\r\n\n\r : \t\r\n\n\r 42 \t\r\n\n\r } \t\r\n\n\r"s)
             .GetRoot()
         == dict_node);
+
+    assert(Builder{}.Value(dict).Build().AsDict() == dict);
 }
 
 void TestErrorHandling() {
@@ -216,7 +233,7 @@ void TestErrorHandling() {
 
     Node array_node{Array{}};
     MustThrowLogicError([&array_node] {
-        array_node.AsMap();
+        array_node.AsDict();
     });
     MustThrowLogicError([&array_node] {
         array_node.AsDouble();
@@ -246,7 +263,7 @@ void Benchmark() {
     const auto doc = json::Load(strm);
     assert(doc.GetRoot() == arr);
     const auto duration = std::chrono::steady_clock::now() - start;
-    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() << "ms"sv
+    std::cerr << std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() << "ms"sv
               << std::endl;
 }
 
@@ -260,5 +277,42 @@ int main() {
     TestArray();
     TestMap();
     TestErrorHandling();
+
     Benchmark();
+
+    try {
+        json::Print(
+            json::Document{
+                json::Builder{}
+                .StartDict()
+                    .Key("key1"s).Value(123)
+                    .Key("key2"s).Value("value2"s)
+                    .Key("key3"s).StartArray()
+                        .Value(456)
+                        .StartDict().EndDict()
+                        .StartDict()
+                            .Key(""s)
+                            .Value(nullptr)
+                        .EndDict()
+                        .Value(""s)
+                    .EndArray()
+                .EndDict()
+                .Build()
+            },
+            cout
+        );
+        cout << endl;
+    } catch(const exception& e) {
+        cout << e.what() << endl;
+    }
+
+    json::Print(
+        json::Document{
+            json::Builder{}
+            .Value("just a string"s)
+            .Build()
+        },
+        cout
+    );
+    cout << endl;
 }
