@@ -36,7 +36,7 @@ Builder& Builder::Value(Node::Value value) {
     return *this;
 }
 
-Builder& Builder::StartDict() {
+DictItemContext Builder::StartDict() {
     if (isBuilt) {
         throw logic_error("Object is built");
     }
@@ -58,7 +58,7 @@ Builder& Builder::StartDict() {
         throw logic_error("Previous node is not finished"s);
     }
 
-    return *this;
+    return DictItemContext(*this);
 }
 
 Builder& Builder::Key(std::string key) {
@@ -91,7 +91,7 @@ Builder& Builder::EndDict() {
     return *this;
 }
 
-Builder& Builder::StartArray() {
+ArrayItemContext Builder::StartArray() {
     if (isBuilt) {
         throw logic_error("Object is built");
     }
@@ -114,7 +114,7 @@ Builder& Builder::StartArray() {
         throw logic_error("Previous node is not finished"s);
     }
 
-    return *this;
+    return ArrayItemContext(*this);
 }
 
 Builder& Builder::EndArray() {
@@ -143,6 +143,58 @@ Node Builder::Build() {
     isBuilt = true;
 
     return *root_;
+}
+
+DictItemContext::DictItemContext(Builder& builder) :
+    builder_(builder) {
+}
+
+KeyValueContext DictItemContext::Key(std::string key) {
+    builder_.Key(move(key));
+    return KeyValueContext(*this);
+}
+
+Builder& DictItemContext::EndDict() {
+    return builder_.EndDict();
+}
+
+KeyValueContext::KeyValueContext(DictItemContext& ctx) :
+    ctx_(ctx) {
+}
+
+DictItemContext& KeyValueContext::Value(Node::Value value) {
+    ctx_.builder_.Value(value);
+    return ctx_;
+}
+
+ArrayItemContext KeyValueContext::StartArray() {
+    return ArrayItemContext(ctx_.builder_.StartArray());
+}
+
+DictItemContext KeyValueContext::StartDict() {
+    return DictItemContext(ctx_.builder_.StartDict());
+}
+
+ArrayItemContext::ArrayItemContext(Builder& builder) :
+    builder_(builder) {
+}
+
+ArrayItemContext& ArrayItemContext::Value(Node::Value value) {
+    builder_.Value(value);
+    return *this;
+}
+
+ArrayItemContext& ArrayItemContext::StartArray() {
+    builder_.StartArray();
+    return *this;
+}
+
+Builder& ArrayItemContext::EndArray() {
+    return builder_.EndArray();
+}
+
+DictItemContext ArrayItemContext::StartDict() {
+    return DictItemContext(builder_.StartDict());
 }
 
 } // namespace json
